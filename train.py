@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import os
 
 #-----------------------------------------------------------------------#
 #                                train_2D                               #
@@ -117,7 +118,7 @@ def train_2D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
         if DSC_val > DSC_max:
             print('Validation DSC increased.  Saving model ...')            
             torch.save(model.state_dict(), path)
-            torch.save(model.state_dict(), '/content/drive/MyDrive/checkpoint.pt')
+            # 删除 Google Drive 路径
             DSC_max = DSC_val
 
         loss_and_metrics.append((epoch, train_loss.cpu().detach().numpy(), valid_loss.cpu().detach().numpy(), specificity_val, sensitivity_val, precision_val, F1_score_val, F2_score_val, DSC_val))
@@ -125,12 +126,15 @@ def train_2D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
     #save the loss_epoch and performance metrics history
     df=pd.DataFrame.from_records(loss_and_metrics, columns=['epoch', 'Training Loss', 'Validation Loss', 'specificity', 'sensitivity', 'precision', 'F1_score', 'F2_score', 'DSC' ])
     df.to_csv('performance_metrics.csv', index=False)      
-    get_ipython().system('cp performance_metrics.csv   /content/drive/MyDrive/performance_metrics.csv')
-    #save checkpoint
-    torch.save(model.state_dict(), '/content/drive/MyDrive/checkpoint.pt') 
-    # return trained model
+    
+    # 删除 IPython 调用和 Google Drive 路径
     return model
 
+
+#-----------------------------------------------------------------------#
+#                                train_3D                               #
+#              Train 3D UNet for some number of epochs                  #
+#-----------------------------------------------------------------------#
 def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, performance_metrics, path, threshold):
     #train 3D UNet for some number of epochs
     #keep track of loss and performance merics
@@ -235,7 +239,7 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
         if DSC_val > DSC_max:
             print('Validation DSC increased.  Saving model ...')            
             torch.save(model.state_dict(), path)
-            torch.save(model.state_dict(), '/content/drive/MyDrive/checkpoint.pt')
+            # 删除 Google Drive 路径
             DSC_max = DSC_val
 
         loss_and_metrics.append((epoch, train_loss.cpu().detach().numpy(), valid_loss.cpu().detach().numpy(), specificity_val, sensitivity_val, precision_val, F1_score_val, F2_score_val, DSC_val))
@@ -243,8 +247,7 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
     #save the loss_epoch as well as the performance metrics history
     df=pd.DataFrame.from_records(loss_and_metrics, columns=['epoch', 'Training Loss', 'Validation Loss', 'specificity', 'sensitivity', 'precision', 'F1_score', 'F2_score', 'DSC' ])
     df.to_csv('performance_metrics.csv', index=False)      
-    get_ipython().system('cp performance_metrics.csv   /content/drive/MyDrive/performance_metrics.csv')
-    torch.save(model.state_dict(), '/content/drive/MyDrive/checkpoint.pt') 
-    # return trained model
+    
+    # 删除 IPython 调用和 Google Drive 路径
+    
     return model
-
