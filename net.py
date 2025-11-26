@@ -78,7 +78,7 @@ class UNet_2D(nn.Module):
         # Dropout
         self.dropout = nn.Dropout(dropout_p)
 
-        self.weight_init()   
+        # self.weight_init()   
 
     @staticmethod
     def normal_init(m, mean, std):
@@ -248,7 +248,7 @@ class UNet_3D(nn.Module):
         # Dropout
         self.dropout = nn.Dropout(dropout_p)
 
-        self.weight_init()   
+        # self.weight_init()   
     
     @staticmethod
     def normal_init(m, mean, std):
@@ -292,7 +292,7 @@ class UNet_3D(nn.Module):
     
 
     def forward(self, x):
-        x = x.squeeze(0)
+        # x = x.squeeze(0)
         # Encoding path
         enc1 = self.encoder1(x)
         p1 = self.dropout(self.pool(enc1))
@@ -307,9 +307,6 @@ class UNet_3D(nn.Module):
         bottleneck = self.bottleneck(p4)      
 
         # Decoding path
-        dec4 = self.dropout(self.upconv4(bottleneck))
-        dec4 = torch.cat((dec4, enc4), dim=1)
-        dec4 = self.decoder4(dec4)
         dec4 = self.dropout(self.upconv4(bottleneck))
         dec4 = torch.cat((dec4, enc4), dim=1)
         dec4 = self.decoder4(dec4)

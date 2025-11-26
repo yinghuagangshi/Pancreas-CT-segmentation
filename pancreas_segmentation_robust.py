@@ -26,6 +26,24 @@ except ImportError as e:
     print(f"❌ 错误: 缺少必要的模块文件。\n详细信息: {e}")
     sys.exit(1)
 
+def process_ct_window(ct_array, w_level=40, w_width=400):
+    """
+    对 CT 数据进行窗宽窗位调整和归一化。
+    胰腺/软组织推荐: WL=40, WW=350~400
+    """
+    # 1. 应用窗宽窗位
+    min_val = w_level - w_width / 2
+    max_val = w_level + w_width / 2
+    
+    ct_clipped = np.clip(ct_array, min_val, max_val)
+    
+    # 2. 归一化到 [0, 255]
+    ct_norm = (ct_clipped - min_val) / (max_val - min_val)
+    ct_norm = ct_norm * 255.0
+    
+    return ct_norm.astype(np.uint8)
+
+
 # ================= ⚙️ 配置区域 =================
 CONFIG = {
     'raw_ct_dir': './Pancreas-CT',              
@@ -34,9 +52,9 @@ CONFIG = {
     'processed_3d_dir': './data3D',             
     
     'unet_2d': False,              
-    'batch_size': 2,               
+    'batch_size': 4,               
     'num_workers': 0,              
-    'n_epochs': 1,                 
+    'n_epochs': 50,                # 🚀 修改：正式训练建议设为 50。如果想快速测试，可改回 1 或 5
     'inference_only': False,       
     'train_on_gpu': torch.cuda.is_available(),
     'seed': 51
@@ -108,7 +126,18 @@ def preprocess_data_robust():
             for f in dcm_files:
                 try:
                     ds = dicomio.dcmread(f)
-                    slices.append(ds)
+
+                    # 先转为 float 避免计算溢出
+                    image = ds.pixel_array.astype(np.float32)
+                    
+                    # 应用斜率和截距 (如果存在)
+                    if hasattr(ds, 'RescaleSlope') and hasattr(ds, 'RescaleIntercept'):
+                        slope = float(ds.RescaleSlope)
+                        intercept = float(ds.RescaleIntercept)
+                        image = image * slope + intercept
+
+                    # slices.append(ds)
+                    slices.append((float(ds.ImagePositionPatient[2]), image))
                 except Exception:
                     pass
             
@@ -116,7 +145,8 @@ def preprocess_data_robust():
                 continue
 
             # 按 Z 轴位置排序
-            slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
+            # slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
+            slices.sort(key=lambda x: x[0])
             
         except Exception as e:
             print(f"❌ [Patient {patient_id}] 处理崩溃: {e}")
@@ -144,24 +174,59 @@ def preprocess_data_robust():
         os.makedirs(save_dir_ct, exist_ok=True)
         os.makedirs(save_dir_mask, exist_ok=True)
 
+        # ... (前面的代码保持不变)
         try:
             for s in range(valid_slices):
                 mask_slice = mask_data[:, :, s]
-                ct_slice = slices[s].pixel_array.transpose(1, 0) 
+                
+                # 获取原始 CT 数据
+                # raw_ct_slice = slices[s].pixel_array.transpose(1, 0)
+                raw_ct_slice = slices[s][1].transpose(1, 0)
+                
+                # --- 🔥 修改开始 🔥 ---
+                # 1. 对 CT 进行窗位调整和归一化 (关键修复!)
+                processed_ct_slice = process_ct_window(raw_ct_slice, w_level=40, w_width=400)
+                
+                # 2. 确保 Mask 也是 uint8 格式 (0 和 255, 或者 0 和 1)
+                # 建议将 Mask 乘以 255 以便肉眼观察，但在读取时要除回来
+                # 这里为了兼容你现有的 dataset 代码(假设它读取0/1)，我们保持 0/1 但转为 uint8
+                mask_slice = mask_slice.astype(np.uint8)
+                
+                # --- 🔥 修改结束 🔥 ---
+
                 filename = f"{s:04d}.png"
                 cv2.imwrite(os.path.join(save_dir_mask, filename), mask_slice)
-                cv2.imwrite(os.path.join(save_dir_ct, filename), ct_slice)
-            
-            # print(f"✅ [Patient {patient_id}] 完成")
+                cv2.imwrite(os.path.join(save_dir_ct, filename), processed_ct_slice)
             
         except Exception as e:
-            print(f"❌ [Patient {patient_id}] 保存出错: {e}")
+            print(f"❌ [Patient {patient_id}] 保存出错: {e}")      
 
     print("--- 数据预处理完成 ---")
 
 def main():
     set_seed(CONFIG['seed'])
     
+    # ================= 📁 1. 设置结果目录和时间戳 (修改部分) =================
+    # 创建 results 文件夹
+    results_dir = 'results'
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+
+    # 生成时间戳，例如: "20251126-1030"
+    import time
+    timestamp = time.strftime("%Y%m%d-%H%M")
+    experiment_name = f"run_{timestamp}"
+    
+    print(f"🚀 本次实验ID: {experiment_name}")
+    print(f"📂 结果将保存在: {results_dir}/")
+
+    # 定义带路径的保存文件名
+    model_save_path = os.path.join(results_dir, f"{experiment_name}_model.pt")
+    loss_plot_path = os.path.join(results_dir, f"{experiment_name}_loss_curve.png")
+    metric_save_path = os.path.join(results_dir, f"{experiment_name}_metrics.csv")
+    result_save_path = os.path.join(results_dir, f"{experiment_name}_inference_results.csv")
+    # ====================================================================
+
     print(f"CUDA 是否可用: {CONFIG['train_on_gpu']}")
     if CONFIG['train_on_gpu']:
         print(f"使用设备: {torch.cuda.get_device_name(0)}")
@@ -203,13 +268,11 @@ def main():
     meshx, meshy, meshz = torch.meshgrid((d1, d2, d3), indexing='ij')
     grid = torch.stack((meshx, meshy, meshz), 3).unsqueeze(0)
 
-    # 🚀 优化点 2：如果 .pt 文件存在，直接跳过生成
     new_pt_count = 0
     for patient in valid_patients:
         out_ct_path = os.path.join(CONFIG['processed_3d_dir'], patient + '_CT.pt')
         if not os.path.exists(out_ct_path):
             try:
-                # 只有文件不存在时才调用
                 volume_composer(patient, patient_image_cnt_CT, patient_path_list, grid)
                 new_pt_count += 1
             except Exception as e:
@@ -224,7 +287,11 @@ def main():
     print("准备 Dataset...")
     part = partitioning(valid_patients, split_ratio=[0.7, 0.1, 0.2])
     
+    # kc: Kernel Depth (切块的深度/层数)
+    # kh: Kernel Height (切块的高度)
+    # kw: Kernel Width (切块的宽度)
     kc, kh, kw = 32, 64, 64
+    # dc, dh, dw: Stride (滑动窗口的步长，通常设为和上面一样，表示不重叠)
     dc, dh, dw = 32, 64, 64
 
     CT_patches = {}
@@ -250,19 +317,84 @@ def main():
     if CONFIG['train_on_gpu']:
         model.cuda()
 
-    criterion = TverskyLoss(1e-8, 0.3, 0.7)
-    optimizer = optim.Adam(model.parameters(), lr=0.005)
+    # 修改为你实际的模型文件名
+    checkpoint_path = './results/run_20251126-1659_model.pt' 
+    
+    import os
+    if os.path.exists(checkpoint_path):
+        print(f"🔄 正在加载预训练模型: {checkpoint_path}")
+        # 加载权重
+        model.load_state_dict(torch.load(checkpoint_path))
+        print("✅ 加载成功！将在现有基础上继续训练。")
+    else:
+        print("⚠️ 未找到预训练模型，将从头开始训练。")        
+
+    criterion = TverskyLoss(1e-6, 0.7, 0.3)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
     
     if len(loaders['train']) == 0:
         print("❌ 训练集为空，无法训练。")
         return
 
     if not CONFIG['inference_only']:
-        print(f"开始训练...")
+        print(f"开始训练 ({CONFIG['n_epochs']} epochs)...")
+        # 修改：这里传入新的 model_save_path
         model = train_3D(CONFIG['n_epochs'], loaders, model, optimizer, criterion, 
-                         CONFIG['train_on_gpu'], performance_metrics, 'model.pt', 0.5)
+                         CONFIG['train_on_gpu'], performance_metrics, model_save_path, 0.5)
+        
+        # 处理 Loss 曲线和 Metrics
+        # 注意：train.py 默认生成 'performance_metrics.csv'，我们需要手动把它另存一份到 results 文件夹
+        if os.path.exists('performance_metrics.csv'):
+            try:
+                df = pd.read_csv('performance_metrics.csv')
+                # 另存为带时间戳的 CSV
+                df.to_csv(metric_save_path, index=False)
+                
+                # 绘图并保存到 results 文件夹
+                plt.figure()
+                plt.plot(df['epoch'], df['Training Loss'], label='Train')
+                plt.plot(df['epoch'], df['Validation Loss'], label='Valid')
+                plt.legend()
+                plt.title(f'Training Process ({experiment_name})')
+                plt.savefig(loss_plot_path) # 修改保存路径
+                print(f"✅ Loss 曲线已保存: {loss_plot_path}")
 
-    print("脚本运行结束。")
+                # [新增] 删除根目录下的临时文件
+                plt.close() # 关闭图表释放内存
+                os.remove('performance_metrics.csv') 
+                print("🗑️  已清理根目录下的 performance_metrics.csv")
+
+            except Exception as e:
+                print(f"保存曲线出错: {e}")
+
+    # 6. 测试集推理 (Evaluation)
+    print("\n--- 开始测试集评估 ---")
+    # 修改：从新的 model_save_path 加载模型
+    if os.path.exists(model_save_path):
+        print(f"加载模型权重: {model_save_path}...")
+        model.load_state_dict(torch.load(model_save_path))
+        model.eval()
+        
+        print(f"正在测试 {len(part['test'])} 个测试集病例...")
+        df_test = get_inference_performance_metrics_3D(model, part['test'], Pancreas_3D_dataset, 
+                                                  CONFIG['batch_size'], CONFIG['train_on_gpu'], 
+                                                  0.5, kw, kh, kc, dw, dh, dc)
+        print("\n📊 测试集结果统计:")
+        print(df_test.describe())
+        
+        # 修改：保存到 results 文件夹
+        df_test.to_csv(result_save_path, index=False)
+        print(f"✅ 详细测试结果已保存至: {result_save_path}")
+
+        #  [新增]删除根目录下的临时文件
+        if os.path.exists('test_metrics.csv'):
+            os.remove('test_metrics.csv')
+            print("🗑️  已清理根目录下的 test_metrics.csv")
+
+    else:
+        print(f"⚠️ 未找到模型文件 {model_save_path}，跳过测试。")
+
+    print("脚本全部运行结束。")
 
 if __name__ == '__main__':
-    main()
+    main() # python -u "e:\Pancreas-CT-segmentation\pancreas_segmentation_robust.py"

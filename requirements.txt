@@ -1,7 +1,22 @@
-torch==1.7.0+cu101
-albumentations==0.1.12
-pandas==1.1.5
-numpy==1.19.5
-torchio==0.18.29
-tqdm==4.41.1
-Pillow==8.1.0
+#torch==1.7.0+cu101
+#albumentations==0.1.12
+#pandas==1.1.5
+#numpy==1.19.5
+#torchio==0.18.29
+#tqdm==4.41.1
+#Pillow==8.1.0
+
+# 不要指定 torch 版本，直接使用镜像预装的 GPU 版本 
+# 图像增强与处理 (去掉版本号以自动匹配 Python 3.10)
+albumentations
+torchio
+Pillow
+# 数据处理
+pandas
+numpy
+tqdm
+# 医学图像处理
+nibabel
+pydicom
+# OpenCV在服务器环境推荐使用 headless 版本，不需要安装 GUI 依赖
+opencv-python-headless

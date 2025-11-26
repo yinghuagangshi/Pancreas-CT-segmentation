@@ -156,6 +156,10 @@ class Pancreas_3D_dataset(Dataset):
         mask = mask.type(torch.IntTensor)        
         image = image.type(torch.FloatTensor)
 
+        # 如果检测到像素值范围是 0-255 (即 max > 1)，则强制除以 255 归一化到 0-1
+        if image.max() > 1.0:
+            image = image / 255.0
+
         #The tensor we pass into ScalarImage is C x W x H x D, so permute axes to
         # C x D x H x W. At the end we have N x 1 x D x H x W.
         image = image.permute(0,3,2,1)
