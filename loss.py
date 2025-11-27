@@ -44,4 +44,37 @@ class TverskyLoss(nn.Module):
         tversky = tp/(tp + self.alpha * fn + self.beta * fp + self.smooth)
         # return the loss
         return 1 - tversky
+    
+
+class MixedLoss(nn.Module):
+    def __init__(self, alpha=0.7, beta=0.3, smooth=1e-6, bce_weight=0.5):
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.smooth = smooth
+        self.bce_weight = bce_weight
+        self.bce = nn.BCELoss() 
+
+    def forward(self, y_pred, y_true):
+        # Flatten
+        y_pred_flat = torch.flatten(y_pred)
+        
+        # 🔥【关键修改】在这里加上 .float() 
+        # 把 Int 类型的 Mask 转为 Float 类型，否则 BCE 会报错
+        y_true_flat = torch.flatten(y_true).float()
+        
+        # --- 1. Tversky Loss ---
+        tp = (y_pred_flat * y_true_flat).sum()
+        fp = (y_pred_flat * (1 - y_true_flat)).sum()
+        fn = ((1 - y_pred_flat) * y_true_flat).sum()
+        
+        tversky_index = tp / (tp + self.alpha * fn + self.beta * fp + self.smooth)
+        loss_tversky = 1 - tversky_index
+
+        # --- 2. BCE Loss ---
+        y_pred_clamped = torch.clamp(y_pred_flat, 1e-7, 1 - 1e-7)
+        loss_bce = self.bce(y_pred_clamped, y_true_flat)
+
+        # --- 3. 混合 ---
+        return loss_tversky + (self.bce_weight * loss_bce)
 

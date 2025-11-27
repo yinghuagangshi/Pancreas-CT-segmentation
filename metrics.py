@@ -29,6 +29,10 @@ class performance_metrics():
         self.smooth = smooth
 
     def __call__(self, y_pred, y_true):
+        # 强制将预测值和真值二值化 (0或1)，防止传入概率值导致指标虚高
+        y_pred = (y_pred > 0.5).float()
+        y_true = (y_true > 0.5).float()
+
         # Flatten both prediction and GT tensors
         y_pred_flat = torch.flatten(y_pred)
         y_true_flat = torch.flatten(y_true)

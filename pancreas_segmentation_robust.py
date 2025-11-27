@@ -15,7 +15,7 @@ import torch.optim as optim
 
 # 尝试导入辅助模块
 try:
-    from loss import TverskyLoss
+    from loss import TverskyLoss, MixedLoss
     from net import UNet_2D, UNet_3D
     from volume_patch_composer import volume_composer, patch_creator
     from dataset import Pancreas_2D_dataset, Pancreas_3D_dataset, partitioning
@@ -174,7 +174,7 @@ def preprocess_data_robust():
         os.makedirs(save_dir_ct, exist_ok=True)
         os.makedirs(save_dir_mask, exist_ok=True)
 
-        # ... (前面的代码保持不变)
+        # (前面的代码保持不变)
         try:
             for s in range(valid_slices):
                 mask_slice = mask_data[:, :, s]
@@ -301,8 +301,8 @@ def main():
     for p in ['train', 'valid']:
         CT_patches[p], mask_patches[p] = patch_creator(part[p], kw, kh, kc, dw, dh, dc)
 
-    dataset_train = Pancreas_3D_dataset(CT_patches['train'], mask_patches['train'], augment=True)
-    dataset_valid = Pancreas_3D_dataset(CT_patches['valid'], mask_patches['valid'], augment=False)
+    dataset_train = Pancreas_3D_dataset(CT_patches['train'], mask_patches['train'], augment=True, is_train=True)
+    dataset_valid = Pancreas_3D_dataset(CT_patches['valid'], mask_patches['valid'], augment=False , is_train=False)
 
     loaders = {
         'train': torch.utils.data.DataLoader(dataset_train, batch_size=CONFIG['batch_size'], 
@@ -327,10 +327,26 @@ def main():
         model.load_state_dict(torch.load(checkpoint_path))
         print("✅ 加载成功！将在现有基础上继续训练。")
     else:
-        print("⚠️ 未找到预训练模型，将从头开始训练。")        
+        print("⚠️ 未找到预训练模型，将从头开始训练。")   
 
-    criterion = TverskyLoss(1e-6, 0.7, 0.3)
+    # ✅ 使用新的混合 Loss
+    # alpha=0.7 强调召回，bce_weight=0.5 提供梯度平滑
+    criterion = MixedLoss(alpha=0.7, beta=0.3, bce_weight=0.5) 
+
+    # criterion = TverskyLoss(1e-6, 0.7, 0.3)
+    # 1. 定义基础优化器 (LR 会被 Scheduler 覆盖，所以这里初始 LR 可以随意，但建议设为 max_lr 的 1/10 或 1/25)
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
+
+    # 2.定义 OneCycleLR
+    # max_lr: 最大学习率，可以尝试 1e-3 或 5e-4
+    # steps_per_epoch: 每个 epoch 的 batch 数量
+    # epochs: 总 epoch 数
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, 
+        max_lr=1e-3, 
+        steps_per_epoch=len(loaders['train']), 
+        epochs=CONFIG['n_epochs']
+    )
     
     if len(loaders['train']) == 0:
         print("❌ 训练集为空，无法训练。")
@@ -338,9 +354,11 @@ def main():
 
     if not CONFIG['inference_only']:
         print(f"开始训练 ({CONFIG['n_epochs']} epochs)...")
-        # 修改：这里传入新的 model_save_path
+
+        # 3. 把 scheduler 传进去
         model = train_3D(CONFIG['n_epochs'], loaders, model, optimizer, criterion, 
-                         CONFIG['train_on_gpu'], performance_metrics, model_save_path, 0.5)
+                         CONFIG['train_on_gpu'], performance_metrics, model_save_path, 0.5, 
+                         scheduler=scheduler) # 传入 scheduler       
         
         # 处理 Loss 曲线和 Metrics
         # 注意：train.py 默认生成 'performance_metrics.csv'，我们需要手动把它另存一份到 results 文件夹

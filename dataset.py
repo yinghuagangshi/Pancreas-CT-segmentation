@@ -122,10 +122,32 @@ class Pancreas_2D_dataset(Dataset):
 # aug:            augmentation pipeline                                 #
 #-----------------------------------------------------------------------#    
 class Pancreas_3D_dataset(Dataset):    
-    def __init__(self, CT_partition, mask_partition, augment = False):
-        self.CT_partition = CT_partition
-        self.mask_partition = mask_partition
+    def __init__(self, CT_partition, mask_partition, augment=False, is_train=False):
         self.augment = augment
+        
+        self.CT_partition = []
+        self.mask_partition = []
+        
+        if is_train:
+            print(f"Filtering patches... Original size: {len(CT_partition)}")
+            for i in range(len(CT_partition)):
+                # 逻辑修改：
+                # 1. 如果包含胰腺 (sum > 0)，必须保留
+                # 2. 如果是纯背景 (sum == 0)，我们以 15% 的概率保留，让模型学会“这也是背景”
+                if mask_partition[i].sum() > 0:
+                    self.CT_partition.append(CT_partition[i])
+                    self.mask_partition.append(mask_partition[i])
+                else:
+                    # random.random() 生成 0-1 之间的随机数
+                    # 0.15 表示保留 15% 的空 Patch。你可以尝试 0.1 到 0.2 之间
+                    if random.random() < 0.15:  
+                        self.CT_partition.append(CT_partition[i])
+                        self.mask_partition.append(mask_partition[i])
+            print(f"Filtered size: {len(self.CT_partition)}")
+        else:
+            # 验证集保持原样，或者也只保留一部分以便快速验证
+            self.CT_partition = CT_partition
+            self.mask_partition = mask_partition
        
     def __len__(self):
         return (len(self.CT_partition))
@@ -156,9 +178,6 @@ class Pancreas_3D_dataset(Dataset):
         mask = mask.type(torch.IntTensor)        
         image = image.type(torch.FloatTensor)
 
-        # 如果检测到像素值范围是 0-255 (即 max > 1)，则强制除以 255 归一化到 0-1
-        if image.max() > 1.0:
-            image = image / 255.0
 
         #The tensor we pass into ScalarImage is C x W x H x D, so permute axes to
         # C x D x H x W. At the end we have N x 1 x D x H x W.
