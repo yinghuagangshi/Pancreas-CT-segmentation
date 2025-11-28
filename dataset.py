@@ -140,7 +140,7 @@ class Pancreas_3D_dataset(Dataset):
                 else:
                     # random.random() 生成 0-1 之间的随机数
                     # 0.15 表示保留 15% 的空 Patch。你可以尝试 0.1 到 0.2 之间
-                    if random.random() < 0.15:  
+                    if random.random() < 2:  
                         self.CT_partition.append(CT_partition[i])
                         self.mask_partition.append(mask_partition[i])
             print(f"Filtered size: {len(self.CT_partition)}")

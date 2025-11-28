@@ -256,12 +256,14 @@ def volume(num_patch_width, num_patch_height, num_patch_depth, num_batches,
             for j, (im, m, pred)  in enumerate(zip(CT_subvol[q], mask_subvol[q],
                                                    predict_subvol[q])):
                 if j%num_patch_depth == r:
-                    im = np.squeeze(im).transpose(0,2,1)
-                    m = np.squeeze(m).transpose(0,2,1)
-                    pred= pred.transpose(0,2,1)
+                    # im = np.squeeze(im).transpose(0,2,1)
+                    # m = np.squeeze(m).transpose(0,2,1)
+                    # pred= pred.transpose(0,2,1)
+                                                            
                     image[idx] = im[k,:,:]
                     mask[idx] = m[k,:,:]
-                    prediction[idx] = pred[k,:,:]
+                    prediction[idx] = pred[k,:,:]                    
+                  
                     idx+=1
              
         image_vol.append(np.vstack(tuple([np.hstack(tuple([image[num_patch_width*i + j] 
@@ -335,9 +337,31 @@ def visualize_patient_prediction_3D(model, patient, Pancreas_3D_dataset,
         output = output.cpu().detach().numpy()
         # Binarize the output
         output_b = (output>threshold)*1
-        predict_subvol[batch_idx] = np.squeeze(output_b)
-        CT_subvol[batch_idx] = np.squeeze(data.cpu().detach().numpy())
-        mask_subvol[batch_idx] = np.squeeze(target.cpu().detach().numpy())
+        
+        # --- 核心修改开始 ---
+        # 不要使用无差别的 squeeze。
+        # data 形状是 (Batch, Channel, D, H, W)，我们要去掉 Channel(第1维)，保留 Batch(第0维)
+        # 即使 Batch=1，也要保留它！
+        
+        # 处理 Prediction (假设输出是 Batch, 1, D, H, W 或 Batch, D, H, W)
+        # 如果 output_b 有 5 维，去掉第 1 维；如果是 4 维就不动
+        if output_b.ndim == 5:
+            predict_subvol[batch_idx] = np.squeeze(output_b, axis=1)
+        else:
+            predict_subvol[batch_idx] = output_b
+
+        # 处理 CT Image (Batch, 1, D, H, W) -> (Batch, D, H, W)
+        ct_numpy = data.cpu().detach().numpy()
+        CT_subvol[batch_idx] = np.squeeze(ct_numpy, axis=1)
+
+        # 处理 Mask (Batch, 1, D, H, W) -> (Batch, D, H, W)
+        target_numpy = target.cpu().detach().numpy()
+        mask_subvol[batch_idx] = np.squeeze(target_numpy, axis=1)
+        # --- 核心修改结束 ---
+        
+        # predict_subvol[batch_idx] = np.squeeze(output_b)
+        # CT_subvol[batch_idx] = np.squeeze(data.cpu().detach().numpy())
+        # mask_subvol[batch_idx] = np.squeeze(target.cpu().detach().numpy())
 
     num_batches = 256*256*128 // (kc*kh*kw*batch_size)
     num_patch_depth = 128//kc
@@ -365,27 +389,68 @@ def visualize_patient_prediction_3D(model, patient, Pancreas_3D_dataset,
     nifti_prediction = nib.Nifti1Image(nifti_prediction_np, np.eye(4))  # Save axis for data (just identity)
 
     nifti_image.header.get_xyzt_units()
-    nifti_image.to_filename('image.nii.gz')  # Save as NiBabel file
+    nifti_image.to_filename('results/image.nii.gz')  # Save as NiBabel file
     nifti_mask.header.get_xyzt_units()
-    nifti_mask.to_filename('mask.nii.gz')  # Save as NiBabel file
+    nifti_mask.to_filename('results/mask.nii.gz')  # Save as NiBabel file
     nifti_prediction.header.get_xyzt_units()
-    nifti_prediction.to_filename('prediction.nii.gz')  # Save as NiBabel file
+    nifti_prediction.to_filename('results/prediction.nii.gz')  # Save as NiBabel file
     
     #plot sample of image cross sections: CT, mask and predictions
     for k in range(0,128,8):
         plt.figure(figsize=(16,16))
-        plt.subplot(1,4,1)
-        plt.imshow(nifti_image_np[k,:,:])
+
+        # plt.subplot(1,4,1)
+        # plt.imshow(nifti_image_np[k,:,:])
+        # plt.title('CT')
+        # plt.subplot(1,4,2)
+        # plt.imshow(nifti_image_np[k,:,:])
+        # plt.imshow(nifti_mask_np[k,:,:], cmap="jet", alpha = 0.3, interpolation= None)  
+        # plt.title('CT and mask')
+        # plt.subplot(1,4,3)
+        # plt.imshow(nifti_image_np[k,:,:])
+        # plt.imshow(nifti_prediction_np[k,:,:], cmap="jet", alpha = 0.3, interpolation= None)  
+        # plt.title('CT and prediction')
+        # plt.subplot(1,4,4)
+        # plt.imshow(nifti_prediction_np[k,:,:])
+        # plt.imshow(nifti_mask_np[k,:,:], cmap="jet", alpha = 0.7, interpolation= None)
+        # plt.title('mask and prediction')
+
+        # --- 1. 纯 CT 图像 ---
+        plt.subplot(1, 4, 1)
+        # 修改点：加上 cmap='gray'
+        plt.imshow(nifti_image_np[k, :, :], cmap='gray')
         plt.title('CT')
-        plt.subplot(1,4,2)
-        plt.imshow(nifti_image_np[k,:,:])
-        plt.imshow(nifti_mask_np[k,:,:], cmap="jet", alpha = 0.3, interpolation= None)  
-        plt.title('CT and mask')
-        plt.subplot(1,4,3)
-        plt.imshow(nifti_image_np[k,:,:])
-        plt.imshow(nifti_prediction_np[k,:,:], cmap="jet", alpha = 0.3, interpolation= None)  
-        plt.title('CT and prediction')
-        plt.subplot(1,4,4)
-        plt.imshow(nifti_prediction_np[k,:,:])
-        plt.imshow(nifti_mask_np[k,:,:], cmap="jet", alpha = 0.7, interpolation= None)
-        plt.title('mask and prediction')
+
+        # --- 2. CT + 真实 Mask ---
+        plt.subplot(1, 4, 2)
+        plt.imshow(nifti_image_np[k, :, :], cmap='gray') # 先画黑白底图
+        
+        # 修改点：处理 Mask，把值为0的背景变透明
+        mask_data = nifti_mask_np[k, :, :]
+        masked_mask = np.ma.masked_where(mask_data == 0, mask_data)
+        # 使用红色显示 Mask，背景完全透明
+        plt.imshow(masked_mask, cmap='Reds', alpha=0.6, interpolation='none')
+        plt.title('CT and Ground Truth')
+
+        # --- 3. CT + 预测 Prediction ---
+        plt.subplot(1, 4, 3)
+        plt.imshow(nifti_image_np[k, :, :], cmap='gray') # 先画黑白底图
+        
+        # 修改点：同样处理 Prediction 的背景
+        pred_data = nifti_prediction_np[k, :, :]
+        masked_pred = np.ma.masked_where(pred_data == 0, pred_data)
+        # 使用橙黄色显示预测，方便区分
+        plt.imshow(masked_pred, cmap='autumn', alpha=0.6, interpolation='none')
+        plt.title('CT and Prediction')
+
+        # --- 4. Mask 和 Prediction 对比 ---
+        plt.subplot(1, 4, 4)
+        # 这里不需要画 CT 底图，直接对比两个 Mask
+        # 画真实 Mask (红色)
+        plt.imshow(masked_mask, cmap='Reds', alpha=0.5, interpolation='none')
+        # 画预测 Mask (绿色或蓝色，用于区分)
+        masked_pred_only = np.ma.masked_where(pred_data == 0, pred_data)
+        plt.imshow(masked_pred_only, cmap='cool', alpha=0.5, interpolation='none') 
+        plt.title('GT(Red) vs Pred(Cyan)')
+        
+        plt.show() # 确保在循环里展示出来

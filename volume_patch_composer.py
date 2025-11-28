@@ -31,15 +31,20 @@ def volume_composer(p, patient_image_cnt_CT, patient_path_list, grid):
         
     # stack 3D slices, build 3D numpy objects and convert them into torch tensors
     image = torch.as_tensor(np.vstack(CT_3D_list))
+    mask = torch.as_tensor(np.vstack(masks_3D_list))
     
-    # --- 新增：在这里就归一化，不要等到 Dataset ---
+    # --- 1. CT 图像归一化  (新增！) ---
     image = image.float()
     if image.max() > 1.0:
         image = image / 255.0 
     image = image.unsqueeze(0).unsqueeze(0)
 
-    
-    mask = torch.as_tensor(np.vstack(masks_3D_list))
+    # --- 2. Mask 归一化 (新增！) ---
+    # 如果之前为了肉眼可见把 Mask 乘了 255，现在必须除回来，确保值域是 {0, 1}
+    if mask.max() > 1.0:
+        mask = mask / 255.0
+
+       
     mask = mask.unsqueeze(0).unsqueeze(0)
     
     image = image.type(torch.FloatTensor)

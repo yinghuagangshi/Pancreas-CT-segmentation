@@ -189,8 +189,9 @@ def preprocess_data_robust():
                 
                 # 2. 确保 Mask 也是 uint8 格式 (0 和 255, 或者 0 和 1)
                 # 建议将 Mask 乘以 255 以便肉眼观察，但在读取时要除回来
+                mask_slice = (mask_slice * 255).astype(np.uint8)
                 # 这里为了兼容你现有的 dataset 代码(假设它读取0/1)，我们保持 0/1 但转为 uint8
-                mask_slice = mask_slice.astype(np.uint8)
+                # mask_slice = mask_slice.astype(np.uint8)
                 
                 # --- 🔥 修改结束 🔥 ---
 
@@ -320,7 +321,6 @@ def main():
     # 修改为你实际的模型文件名
     checkpoint_path = './results/run_20251126-1659_model.pt' 
     
-    import os
     if os.path.exists(checkpoint_path):
         print(f"🔄 正在加载预训练模型: {checkpoint_path}")
         # 加载权重
@@ -331,9 +331,9 @@ def main():
 
     # ✅ 使用新的混合 Loss
     # alpha=0.7 强调召回，bce_weight=0.5 提供梯度平滑
-    criterion = MixedLoss(alpha=0.7, beta=0.3, bce_weight=0.5) 
+    # criterion = MixedLoss(alpha=0.7, beta=0.3, bce_weight=0.5) 
 
-    # criterion = TverskyLoss(1e-6, 0.7, 0.3)
+    criterion = TverskyLoss(1e-6, 0.7, 0.3)
     # 1. 定义基础优化器 (LR 会被 Scheduler 覆盖，所以这里初始 LR 可以随意，但建议设为 max_lr 的 1/10 或 1/25)
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
