@@ -41,6 +41,7 @@ def train_2D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
             if train_on_gpu:
                 data, target = data.cuda(), target.cuda()
 
+
             # === (BEGIN) ===
             # 仅在第一个 batch 检查，避免刷屏
             if batch_idx == 0:
@@ -177,6 +178,8 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
             # move to GPU
             if train_on_gpu:
                 data, target = data.cuda(), target.cuda()
+            # 🔥【修改 1】将 target 转为 float，否则 BCEWithLogitsLoss 会报错
+            target = target.float()
 
             # === (BEGIN) ===
             # 仅在第一个 batch 检查，避免刷屏
@@ -227,6 +230,9 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
                 # move to GPU
                 if train_on_gpu:
                     data, target = data.cuda(), target.cuda()
+                # 🔥【修改 1】将 target 转为 float，否则 BCEWithLogitsLoss 会报错
+                target = target.float()
+
                 # forward pass (inference) to get the output
                 output = model(data)
                 # calculate the batch loss
@@ -235,7 +241,10 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
                 valid_loss +=  ((1 / (batch_idx + 1)) * (loss.data - valid_loss))
                                 
                 # convert output probabilities to predicted class
+                # 🔥【新增】将 Logits 转换为概率，用于后续计算指标
+                output = torch.sigmoid(output)
                 output = output.cpu().detach().numpy()
+                
                 # Binarize the output
                 output_b = (output>threshold)*1
                 output_b = np.squeeze(output_b)

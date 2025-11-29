@@ -321,7 +321,8 @@ class UNet_3D(nn.Module):
         dec1 = self.decoder1(dec1)
         #self.WS()
         # Output
-        return torch.sigmoid(self.conv(dec1))
+        # return torch.sigmoid(self.conv(dec1))
+        return self.conv(dec1)  #配合BCEWithLogitsLoss
 
     @staticmethod
     def _block(in_features, out_features):               

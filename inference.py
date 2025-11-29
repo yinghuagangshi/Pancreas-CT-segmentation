@@ -139,7 +139,10 @@ def get_inference_performance_metrics_3D(model, part, Pancreas_3D_dataset,
                 data, target = data.cuda(), target.cuda()
             # forward pass
             output = model(data)
+
+            output = torch.sigmoid(output) # 🔥 必须加！把 Logits 转回概率
             output = output.cpu().detach().numpy()
+
             # Binarize the output
             output_b = (output>threshold)*1
             output_b = np.squeeze(output_b)
@@ -534,6 +537,8 @@ def visualize_patient_prediction_3D(model, patient, Pancreas_3D_dataset,
         if train_on_gpu:
             data, target = data.cuda(), target.cuda()
         output = model(data)
+
+        output = torch.sigmoid(output) # 🔥 必须加！把 Logits 转回概率
         output = output.cpu().detach().numpy()
         output_b = (output > threshold) * 1
         
