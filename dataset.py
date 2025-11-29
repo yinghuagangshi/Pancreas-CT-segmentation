@@ -140,7 +140,7 @@ class Pancreas_3D_dataset(Dataset):
                 else:
                     # random.random() 生成 0-1 之间的随机数
                     # 0.15 表示保留 15% 的空 Patch。你可以尝试 0.1 到 0.2 之间
-                    if random.random() < 2:  
+                    if random.random() < 0.2:  
                         self.CT_partition.append(CT_partition[i])
                         self.mask_partition.append(mask_partition[i])
             print(f"Filtered size: {len(self.CT_partition)}")
@@ -158,15 +158,42 @@ class Pancreas_3D_dataset(Dataset):
         image = self.CT_partition[idx].unsqueeze(0)
         mask = self.mask_partition[idx].unsqueeze(0)
         if self.augment:
-            aug = tio.Compose([tio.OneOf\
-                               ({tio.RandomAffine(scales= (0.9, 1.1, 0.9, 1.1, 1, 1),
-                                                  degrees= (5.0, 5.0, 0)): 0.35,
-                                 tio.RandomElasticDeformation(num_control_points=9,
-                                                  max_displacement= (0.1, 0.1, 0.1),
-                                                  locked_borders= 2, 
-                                                  image_interpolation= 'linear'): 0.35,
-                                 tio.RandomFlip(axes=(2,)):.3}),
-                              ])
+            # 数据增强
+            # aug = tio.Compose([tio.OneOf\
+            #                    ({tio.RandomAffine(scales= (0.9, 1.1, 0.9, 1.1, 1, 1),
+            #                                       degrees= (5.0, 5.0, 0)): 0.35,
+            #                      tio.RandomElasticDeformation(num_control_points=9,
+            #                                       max_displacement= (0.1, 0.1, 0.1),
+            #                                       locked_borders= 2, 
+            #                                       image_interpolation= 'linear'): 0.35,
+            #                      tio.RandomFlip(axes=(2,)):.3}),
+            #                   ])
+
+            # 针对单一数据集冲高分的“精准版”策略
+            aug = tio.Compose([
+                # 1. 几何变换：这是主力，保持高概率 (0.8)
+                # 因为胰腺形状千奇百怪，即使同台机器，形状差异也是巨大的
+                tio.OneOf({
+                    tio.RandomAffine(scales=(0.9, 1.1), degrees=10, isotropic=True): 0.5, 
+                    tio.RandomElasticDeformation(num_control_points=7, max_displacement=4): 0.3, 
+                    tio.RandomFlip(axes=('LR', 'AP', 'IS')): 0.2, 
+                }, p=0.8), 
+
+                # 2. 强度变换：降低概率到 0.3，且减小幅度
+                # 目的仅仅是防止过拟合，而不是模拟异构机器
+                tio.OneOf({
+                    # 这里的 std 从 0.05 降到了 0.01，非常轻微的噪点，模拟胖瘦差异
+                    tio.RandomNoise(std=0.01): 0.3, 
+                    
+                    # 这里的 Gamma 范围缩小，模拟造影剂的轻微波动
+                    tio.RandomGamma(log_gamma=(-0.15, 0.15)): 0.4, 
+                    
+                    # 模拟层厚差异导致的模糊
+                    tio.RandomBlur(std=(0, 0.5)): 0.3, 
+                }, p=0.3), # 概率从 0.5 降为 0.3，不要太喧宾夺主
+            ])
+
+
             subject = tio.Subject(ct=tio.ScalarImage(tensor = image),
                                   mask=tio.ScalarImage(tensor = mask))
             output = aug(subject)

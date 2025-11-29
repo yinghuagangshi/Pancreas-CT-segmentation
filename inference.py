@@ -287,28 +287,52 @@ def visualize_patient_prediction_2D(model, patient, dataset_test, batch_size,
 def volume(num_patch_width, num_patch_height, num_patch_depth, num_batches,
            r, CT_subvol, mask_subvol, predict_subvol, kc, batch_size):
     image_vol, mask_vol, prediction_vol = [], [], []
+    
+    # 1. Identify actual available batches to prevent KeyErrors
+    available_batches = sorted(CT_subvol.keys())
+
     for k in range(kc):    
         idx, image, mask, prediction = 0, {}, {}, {}
-        for q in range(num_batches):
+        
+        # 2. Iterate only over existing batches
+        for q in available_batches:
+            # Iterate over samples in the current batch
             for j, (im, m, pred)  in enumerate(zip(CT_subvol[q], mask_subvol[q], predict_subvol[q])):
-                # 修复核心：使用全局索引
+                
+                # 3. Calculate Global Index safely
                 global_idx = q * batch_size + j
+                
+                # 4. Check if this patch belongs to the current depth row 'r'
                 if global_idx % num_patch_depth == r:
                     image[idx] = im[k, :, :]
                     mask[idx] = m[k, :, :]
                     prediction[idx] = pred[k, :, :]
                     idx+=1
         
-        # 堆叠拼图
-        image_vol.append(np.vstack(tuple([np.hstack(tuple([image[num_patch_width*i + j] 
-                                                           for j in range(num_patch_height)])) 
-                                          for i in range(num_patch_width)])))
-        mask_vol.append(np.vstack(tuple([np.hstack(tuple([mask[num_patch_width*i + j]  
-                                                      for j in range(num_patch_height)])) 
-                                         for i in range(num_patch_width)])))
-        prediction_vol.append(np.vstack(tuple([np.hstack(tuple([prediction[num_patch_width*i + j] 
-                                                                for j in range(num_patch_height)])) 
-                                               for i in range(num_patch_width)])))
+        # 5. Robust Stacking (Handling potential missing indices if necessary, though ideally idx aligns)
+        # Note: This logic assumes 'idx' increments perfectly to match num_patch_width * num_patch_height
+        try:
+            current_image_layer = np.vstack(tuple([np.hstack(tuple([image[num_patch_width*i + j] 
+                                                               for j in range(num_patch_height)])) 
+                                              for i in range(num_patch_width)]))
+            
+            current_mask_layer = np.vstack(tuple([np.hstack(tuple([mask[num_patch_width*i + j]  
+                                                          for j in range(num_patch_height)])) 
+                                             for i in range(num_patch_width)]))
+            
+            current_pred_layer = np.vstack(tuple([np.hstack(tuple([prediction[num_patch_width*i + j] 
+                                                                    for j in range(num_patch_height)])) 
+                                                   for i in range(num_patch_width)]))
+            
+            image_vol.append(current_image_layer)
+            mask_vol.append(current_mask_layer)
+            prediction_vol.append(current_pred_layer)
+            
+        except KeyError as e:
+            print(f"Error reconstruction layer {k}: Missing patch index {e}")
+            # Optional: Append zero-arrays or handle error appropriately
+            return [], [], []
+
         
     return image_vol, mask_vol, prediction_vol
 

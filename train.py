@@ -206,8 +206,9 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
             optimizer.step() 
 
             # OneCycleLR 需要在每个 batch 结束后 step，而不是 epoch 结束
-            if scheduler is not None:
-                scheduler.step()
+            # ReduceLROnPlateau 不能在这里运行
+            # if scheduler is not None:
+            #     scheduler.step()
 
             # update training loss
             train_loss += ((1 / (batch_idx + 1)) * (loss.data - train_loss)) 
@@ -262,13 +263,18 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
             train_loss,
             valid_loss
             ))
+        
+        # ✅ 只有 ReduceLROnPlateau 需要这一行传入验证集 Los
+        if scheduler is not None:
+            scheduler.step(valid_loss) 
+                
         print('Specificity: {:.6f} \tSensitivity: {:.6f} \tF2_score: {:.6f} \tDSC: {:.6f}'.format(
             specificity_val,
             sensitivity_val, 
             F2_score_val, 
             DSC_val
         ))
-        
+              
         
         if DSC_val > DSC_max:
             print('Validation DSC increased.  Saving model ...')            
@@ -279,6 +285,6 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
 
     #save the loss_epoch as well as the performance metrics history
     df=pd.DataFrame.from_records(loss_and_metrics, columns=['epoch', 'Training Loss', 'Validation Loss', 'specificity', 'sensitivity', 'precision', 'F1_score', 'F2_score', 'DSC' ])
-    df.to_csv('metric_save_path', index=False)      
+    df.to_csv(metric_save_path, index=False)      
     
     return model
