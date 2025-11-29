@@ -148,7 +148,7 @@ def train_2D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
 #                                train_3D                               #
 #              Train 3D UNet for some number of epochs                  #
 #-----------------------------------------------------------------------#
-def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, performance_metrics, path, threshold, scheduler=None):
+def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, performance_metrics, path, metric_save_path,threshold, scheduler=None):
     #train 3D UNet for some number of epochs
     #keep track of loss and performance merics
     loss_and_metrics =[]
@@ -279,6 +279,6 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
 
     #save the loss_epoch as well as the performance metrics history
     df=pd.DataFrame.from_records(loss_and_metrics, columns=['epoch', 'Training Loss', 'Validation Loss', 'specificity', 'sensitivity', 'precision', 'F1_score', 'F2_score', 'DSC' ])
-    df.to_csv('performance_metrics.csv', index=False)      
+    df.to_csv('metric_save_path', index=False)      
     
     return model

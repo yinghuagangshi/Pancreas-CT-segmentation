@@ -173,7 +173,7 @@ def get_inference_performance_metrics_3D(model, part, Pancreas_3D_dataset,
                                  columns=['Patient', 'specificity', 
                                           'sensitivity', 'precision', 
                                           'F1_score', 'F2_score', 'DSC' ])
-    df.to_csv('test_metrics.csv', index=False)       
+    # df.to_csv('test_metrics.csv', index=False)       
     #return the inference metrics table
     return df
 

@@ -225,7 +225,7 @@ def main():
     model_save_path = os.path.join(results_dir, f"{experiment_name}_model.pt")
     loss_plot_path = os.path.join(results_dir, f"{experiment_name}_loss_curve.png")
     metric_save_path = os.path.join(results_dir, f"{experiment_name}_metrics.csv")
-    result_save_path = os.path.join(results_dir, f"{experiment_name}_inference_results.csv")
+    test_save_path = os.path.join(results_dir, f"{experiment_name}_inference_results.csv")
     # ====================================================================
 
     print(f"CUDA 是否可用: {CONFIG['train_on_gpu']}")
@@ -357,16 +357,13 @@ def main():
 
         # 3. 把 scheduler 传进去
         model = train_3D(CONFIG['n_epochs'], loaders, model, optimizer, criterion, 
-                         CONFIG['train_on_gpu'], performance_metrics, model_save_path, 0.5, 
+                         CONFIG['train_on_gpu'], performance_metrics, model_save_path,metric_save_path, 0.5, 
                          scheduler=scheduler) # 传入 scheduler       
         
         # 处理 Loss 曲线和 Metrics
-        # 注意：train.py 默认生成 'performance_metrics.csv'，我们需要手动把它另存一份到 results 文件夹
-        if os.path.exists('performance_metrics.csv'):
+        if os.path.exists(metric_save_path):
             try:
-                df = pd.read_csv('performance_metrics.csv')
-                # 另存为带时间戳的 CSV
-                df.to_csv(metric_save_path, index=False)
+                df = pd.read_csv(metric_save_path)
                 
                 # 绘图并保存到 results 文件夹
                 plt.figure()
@@ -376,12 +373,8 @@ def main():
                 plt.title(f'Training Process ({experiment_name})')
                 plt.savefig(loss_plot_path) # 修改保存路径
                 print(f"✅ Loss 曲线已保存: {loss_plot_path}")
-
-                # [新增] 删除根目录下的临时文件
                 plt.close() # 关闭图表释放内存
-                os.remove('performance_metrics.csv') 
-                print("🗑️  已清理根目录下的 performance_metrics.csv")
-
+                
             except Exception as e:
                 print(f"保存曲线出错: {e}")
 
@@ -400,14 +393,9 @@ def main():
         print("\n📊 测试集结果统计:")
         print(df_test.describe())
         
-        # 修改：保存到 results 文件夹
-        df_test.to_csv(result_save_path, index=False)
-        print(f"✅ 详细测试结果已保存至: {result_save_path}")
-
-        #  [新增]删除根目录下的临时文件
-        if os.path.exists('test_metrics.csv'):
-            os.remove('test_metrics.csv')
-            print("🗑️  已清理根目录下的 test_metrics.csv")
+        # 保存到 results 文件夹
+        df_test.to_csv(test_save_path, index=False)
+        print(f"✅ 详细测试结果已保存至: {test_save_path}")
 
     else:
         print(f"⚠️ 未找到模型文件 {model_save_path}，跳过测试。")
