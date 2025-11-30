@@ -134,7 +134,8 @@ class Pancreas_3D_dataset(Dataset):
                 # 逻辑修改：
                 # 1. 如果包含胰腺 (sum > 0)，必须保留
                 # 2. 如果是纯背景 (sum == 0)，我们以 15% 的概率保留，让模型学会“这也是背景”
-                if mask_partition[i].sum() > 0:
+                pixel_threshold = 100  # 只有当 Patch 中胰腺像素超过 100 个才认为是有效样本
+                if mask_partition[i].sum() > pixel_threshold:
                     self.CT_partition.append(CT_partition[i])
                     self.mask_partition.append(mask_partition[i])
                 else:

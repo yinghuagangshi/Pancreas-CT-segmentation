@@ -208,10 +208,11 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
             # Update weights
             optimizer.step() 
 
-            # OneCycleLR 需要在每个 batch 结束后 step，而不是 epoch 结束
-            # ReduceLROnPlateau 不能在这里运行
-            # if scheduler is not None:
-            #     scheduler.step()
+            # 针对 Batch 级调度器 (如 OneCycleLR)，每个 Batch 都要更新
+            if scheduler is not None:
+                # 检查是否是需要 Batch 更新的调度器
+                if isinstance(scheduler, (torch.optim.lr_scheduler.OneCycleLR, torch.optim.lr_scheduler.CyclicLR)):
+                    scheduler.step()
 
             # update training loss
             train_loss += ((1 / (batch_idx + 1)) * (loss.data - train_loss)) 
@@ -266,20 +267,33 @@ def train_3D(n_epochs, loaders, model, optimizer, criterion, train_on_gpu, perfo
         # Calculate the overall average metrics
         specificity_val, sensitivity_val, precision_val, F1_score_val, F2_score_val, DSC_val = specificity_val/valid_cnt, sensitivity_val/valid_cnt, precision_val/valid_cnt, F1_score_val/valid_cnt, F2_score_val/valid_cnt, DSC_val/valid_cnt
 
+        # 🔥【新增】获取当前学习率
+        current_lr = optimizer.param_groups[0]['lr']
+
         # print training/validation statistics 
-        print('Epoch: {} \tTraining Loss: {:.4f} \tValidation Loss: {:.4f}'.format(
+        print('Epoch: {} \tTraining Loss: {:.4f} \tValidation Loss: {:.4f} \tLR: {:.6f}'.format(
             epoch, 
             train_loss,
-            valid_loss
+            valid_loss,
+            current_lr
             ))
         
-        # ✅ 只有 ReduceLROnPlateau 需要这一行传入验证集 Los
+        # ✅ 更健壮的写法（可选）：
         if scheduler is not None:
-            scheduler.step(valid_loss) 
-                
-        print('Specificity: {:.6f} \tSensitivity: {:.6f} \tF2_score: {:.6f} \tDSC: {:.6f}'.format(
+            # 1. 如果是 ReduceLROnPlateau，需要传入监控指标 (valid_loss)
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(valid_loss)
+            # 2. 如果是 Batch 级调度器，这里千万不能再 step，否则会打乱节奏
+            elif isinstance(scheduler, (torch.optim.lr_scheduler.OneCycleLR, torch.optim.lr_scheduler.CyclicLR)):
+                pass
+            # 3. 其他 Epoch 级调度器 (StepLR, CosineAnnealingLR 等) 在这里 step
+            else:
+                scheduler.step()
+                        
+        print('Specificity: {:.6f} \tSensitivity: {:.6f} \tPrecision: {:.6f} \tF2_score: {:.6f} \tDSC: {:.6f}'.format(
             specificity_val,
             sensitivity_val, 
+            precision_val,
             F2_score_val, 
             DSC_val
         ))
