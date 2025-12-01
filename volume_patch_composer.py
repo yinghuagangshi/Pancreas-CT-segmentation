@@ -22,7 +22,7 @@ def volume_composer(p, patient_image_cnt_CT, patient_path_list, grid):
         # create numpy array objects from the CT and mask Image objects
         image = np.array(image)
         mask = np.array(mask)
-        # add a new dimension to the mask and CT slice
+        # add a new dimension（通道数） to the mask and CT slice
         image = image[np.newaxis, :, :]
         mask = mask[np.newaxis, :, :]
         # add the 3D CTs and masks to their lists
